@@ -1,211 +1,74 @@
 name: Build unsigned iOS IPA
 
-
-
 on:
-
   workflow_dispatch:
-  
   push:
-  
     branches: [main]
-    
-
 
 jobs:
-
   build:
-  
     runs-on: macos-15
-    
     steps:
-    
       - name: Check out repository
-      
         uses: actions/checkout@v7
-        
-
-
       - name: Unpack source archive if uploaded
-      
         run: |
-        
           if [ -f "PersonalKeyboard-Source.zip" ]; then
-          
             mkdir -p /tmp/keyboard-source
-            
             unzip -q PersonalKeyboard-Source.zip -d /tmp/keyboard-source
-            
             cp -R /tmp/keyboard-source/KeyboardPrototype/. "$GITHUB_WORKSPACE/"
-            
           fi
-          
-
-
       - name: Install XcodeGen
-      
         run: brew install xcodegen
-        
-
-
       - name: Generate Xcode project
-      
         run: xcodegen generate
-        
-
-
       - name: Build app for iOS device without signing
-      
         run: |
-        
-          xcodebuild \
-          
-            -project PersonalKeyboard.xcodeproj \
-            
-            -scheme PersonalKeyboard \
-            
-            -configuration Release \
-            
-            -sdk iphoneos \
-            
-            -derivedDataPath "$PWD/build/DerivedData" \
-            
-            CODE_SIGNING_ALLOWED=NO \
-            
-            build
-            
-
-
+          xcodebuild -project PersonalKeyboard.xcodeproj -scheme PersonalKeyboard -configuration Release -sdk iphoneos -destination 'generic/platform=iOS' -derivedDataPath "$PWD/build/DerivedData" CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" CODE_SIGN_STYLE=Manual DEVELOPMENT_TEAM="" build
       - name: Package unsigned IPA
-      
         run: |
-        
           APP_PATH="$PWD/build/DerivedData/Build/Products/Release-iphoneos/PersonalKeyboard.app"
-          
           EXTENSION_PATH="$APP_PATH/PlugIns/KeyboardExtension.appex"
-          
-
-
           if [ ! -d "$EXTENSION_PATH" ]; then
-          
             echo "ERROR: KeyboardExtension.appex is missing from PersonalKeyboard.app/PlugIns"
-            
             find "$APP_PATH" -maxdepth 4 -print
-            
             exit 1
-            
           fi
-          
-
-
           APP_BUNDLE_ID=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$APP_PATH/Info.plist")
-          
+          APP_BUILD_VERSION=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleVersion' "$APP_PATH/Info.plist")
+          APP_SHORT_VERSION=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$APP_PATH/Info.plist")
+          APP_EXECUTABLE=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleExecutable' "$APP_PATH/Info.plist")
+          APP_PACKAGE_TYPE=$(/usr/libexec/PlistBuddy -c 'Print :CFBundlePackageType' "$APP_PATH/Info.plist")
           EXTENSION_BUNDLE_ID=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$EXTENSION_PATH/Info.plist")
-          
+          EXTENSION_BUILD_VERSION=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleVersion' "$EXTENSION_PATH/Info.plist")
+          EXTENSION_PACKAGE_TYPE=$(/usr/libexec/PlistBuddy -c 'Print :CFBundlePackageType' "$EXTENSION_PATH/Info.plist")
           EXTENSION_POINT=$(/usr/libexec/PlistBuddy -c 'Print :NSExtension:NSExtensionPointIdentifier' "$EXTENSION_PATH/Info.plist")
-          
-
-
           echo "App Bundle ID: $APP_BUNDLE_ID"
-          
+          echo "App version/build: $APP_SHORT_VERSION ($APP_BUILD_VERSION)"
+          echo "App executable/package type: $APP_EXECUTABLE / $APP_PACKAGE_TYPE"
           echo "Keyboard Extension Bundle ID: $EXTENSION_BUNDLE_ID"
-          
+          echo "Keyboard Extension build/package type: $EXTENSION_BUILD_VERSION / $EXTENSION_PACKAGE_TYPE"
           echo "Extension point: $EXTENSION_POINT"
-          
-
-
           test "$APP_BUNDLE_ID" = "app.personal.PersonalKeyboard"
-          
+          test "$APP_BUILD_VERSION" = "1"
+          test "$APP_SHORT_VERSION" = "1.0"
+          test "$APP_EXECUTABLE" = "PersonalKeyboard"
+          test -f "$APP_PATH/$APP_EXECUTABLE"
+          test "$APP_PACKAGE_TYPE" = "APPL"
           test "$EXTENSION_BUNDLE_ID" = "app.personal.PersonalKeyboard.KeyboardExtension"
-          
+          test "$EXTENSION_BUILD_VERSION" = "$APP_BUILD_VERSION"
+          test "$EXTENSION_PACKAGE_TYPE" = "XPC!"
           test "$EXTENSION_POINT" = "com.apple.keyboard-service"
-          
-
-
           mkdir -p "$PWD/build/Payload"
-          
           cp -R "$APP_PATH" "$PWD/build/Payload/PersonalKeyboard.app"
-          
           cd "$PWD/build"
-          
           /usr/bin/zip -qry PersonalKeyboard-unsigned.ipa Payload
-          
-
-
           unzip -Z1 PersonalKeyboard-unsigned.ipa | grep -Fq 'Payload/PersonalKeyboard.app/PlugIns/KeyboardExtension.appex/Info.plist'
-          
           unzip -Z1 PersonalKeyboard-unsigned.ipa | grep -Fq 'Payload/PersonalKeyboard.app/PlugIns/KeyboardExtension.appex/KeyboardExtension'
-          
-
-
       - name: Upload IPA artifact
-      
         uses: actions/upload-artifact@v6
-        
         with:
-        
           name: PersonalKeyboard-unsigned-ipa
-          
           path: build/PersonalKeyboard-unsigned.ipa
-          
           if-no-files-found: error
-          
           retention-days: 7
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
