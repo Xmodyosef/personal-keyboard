@@ -1,0 +1,53 @@
+name: Build unsigned iOS IPA
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+
+jobs:
+  build:
+    runs-on: macos-15
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Unpack source archive if uploaded
+        run: |
+          if [ -f "PersonalKeyboard-Source.zip" ]; then
+            mkdir -p /tmp/keyboard-source
+            unzip -q PersonalKeyboard-Source.zip -d /tmp/keyboard-source
+            cp -R /tmp/keyboard-source/KeyboardPrototype/. "$GITHUB_WORKSPACE/"
+          fi
+
+      - name: Install XcodeGen
+        run: brew install xcodegen
+
+      - name: Generate Xcode project
+        run: xcodegen generate
+
+      - name: Build app for iOS device without signing
+        run: |
+          xcodebuild \
+            -project PersonalKeyboard.xcodeproj \
+            -scheme PersonalKeyboard \
+            -configuration Release \
+            -sdk iphoneos \
+            -derivedDataPath "$PWD/build/DerivedData" \
+            CODE_SIGNING_ALLOWED=NO \
+            build
+
+      - name: Package unsigned IPA
+        run: |
+          mkdir -p "$PWD/build/Payload"
+          cp -R "$PWD/build/DerivedData/Build/Products/Release-iphoneos/PersonalKeyboard.app" "$PWD/build/Payload/PersonalKeyboard.app"
+          cd "$PWD/build"
+          /usr/bin/zip -qry PersonalKeyboard-unsigned.ipa Payload
+
+      - name: Upload IPA artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: PersonalKeyboard-unsigned-ipa
+          path: build/PersonalKeyboard-unsigned.ipa
+          if-no-files-found: error
+          retention-days: 7
